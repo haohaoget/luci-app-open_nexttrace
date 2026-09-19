@@ -61,8 +61,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: open-nexttrace-${{ matrix.release.format }}-${{ matrix.arch }}-${{ matrix.release.version }}
-          path: |
-            bin/packages/**/*.ipk
-            bin/packages/**/*.apk
-            logs/**
+          path: bin/packages/${{ matrix.arch }}/base/open-nexttrace-core*.${{ matrix.release.format }}
           if-no-files-found: error

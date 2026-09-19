@@ -48,9 +48,15 @@ test('CSV escapes quotes, separators and spreadsheet formulas', () => {
     assert.ok(csv.includes('"\'=HYPERLINK(""bad"", ""bad"")"'));
 });
 test('all first-party browser JavaScript parses', () => {
-    for (const name of ['view/open_nexttrace/main.js', 'open_nexttrace/map.js']) {
+    for (const name of ['view/open_nexttrace/main.js', 'view/open_nexttrace/settings.js', 'open_nexttrace/map.js']) {
         assert.doesNotThrow(() => new Function(fs.readFileSync(path.join(resources, name), 'utf8')));
     }
+});
+test('status polling survives LuCI immediate first tick before the view is mounted', () => {
+    const source = fs.readFileSync(path.join(resources, 'view/open_nexttrace/main.js'), 'utf8');
+    assert.match(source, /if \(self\.wasConnected\) \{\s*poll\.remove\(self\.pollFn\)/);
+    assert.match(source, /self\.wasConnected = true;\s*if \(self\.starting\)/);
+    assert.doesNotMatch(source, /if \(!self\.root\.isConnected\) \{\s*poll\.remove\(self\.pollFn\)/);
 });
 test('LuCI rows render remote hostnames and GeoIP fields as text, never HTML', () => {
     const unsafe = [];

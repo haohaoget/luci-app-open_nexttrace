@@ -4,6 +4,7 @@ local nixio = require "nixio"
 local fs = require "nixio.fs"
 local json = require "luci.jsonc"
 local policy = require "open_nexttrace.policy"
+local resolver = require "open_nexttrace.resolver"
 local BASE = "/tmp/open-nexttrace"
 local CORE = "/usr/bin/nexttrace"
 local LIMIT = 128 * 1024
@@ -94,12 +95,25 @@ local function detach()
     nixio.chdir("/")
 end
 
-local function supervise(id, argv)
+local function supervise(id, argv, resolution)
     local child
     local ok, failure = pcall(function()
         -- Wait for start() to publish the PID and release the control lock.
         local s = locked(function() return state() end, true)
         if s.id ~= id then error("任务已被替换") end
+        if resolution then
+            local address = resolver.resolve(nixio, resolution)
+            argv[#argv] = address
+            locked(function()
+                local current_state = state()
+                if current_state.id == id then
+                    current_state.resolved_target = address
+                    current_state.dns_server = resolution.server
+                    current_state.dns_source = resolution.source ~= "" and resolution.source or nil
+                    save(current_state)
+                end
+            end, true)
+        end
         local output = assert(nixio.open(BASE .. "/stdout", "w", "0600"))
         local errors = assert(nixio.open(BASE .. "/stderr", "w", "0600"))
         child = assert(nixio.fork())
@@ -159,7 +173,10 @@ local function supervise(id, argv)
         pcall(function()
             locked(function()
                 local s = state()
-                if s.id == id then s.status, s.error = "error", tostring(failure); save(s) end
+                if s.id == id then
+                    s.status, s.error, s.finished = "error", tostring(failure), os.time()
+                    save(s)
+                end
             end, true)
         end)
     end
@@ -207,7 +224,9 @@ end
 function methods.start(input, lock)
     if current().status == "running" then return { error = "已有追踪正在运行，请先停止当前任务" } end
     if not fs.access(CORE, "x") then return { error = "未安装 NextTrace 核心，请安装 open-nexttrace-core" } end
-    local argv = policy.build(input, interfaces())
+    local network_interfaces = interfaces()
+    local argv = policy.build(input, network_interfaces)
+    local resolution = policy.resolver(input, network_interfaces)
     -- Fixed executable and fixed arguments only. Cache is tied to the binary
     -- identity so package upgrades cannot retain outdated CLI capabilities.
     local fingerprint = tostring(fs.stat(CORE, "size")) .. ":" .. tostring(fs.stat(CORE, "mtime"))
@@ -229,7 +248,7 @@ function methods.start(input, lock)
     if pid == 0 then
         lock:close() -- POSIX record locks are not inherited by fork().
         detach()
-        supervise(id, argv)
+        supervise(id, argv, resolution)
     end
     -- rpcd may include ubus_rpc_session. Never persist or return that token.
     local options = {}
@@ -242,7 +261,7 @@ function methods.start(input, lock)
 end
 
 if arg[1] == "list" then
-    io.write('{"info":{},"status":{"id":""},"stop":{"id":""},"start":{"target":"","protocol":"","family":"","device":"","max_hops":0,"queries":0,"timeout":0,"port":0,"provider":"","rdns":true}}')
+    io.write('{"info":{},"status":{"id":""},"stop":{"id":""},"start":{"target":"","protocol":"","family":"","device":"","max_hops":0,"queries":0,"timeout":0,"port":0,"provider":"","rdns":true,"dns_server":"","dns_port":0,"dns_source":""}}')
 elseif arg[1] == "call" then
     local ok, result = pcall(function()
         local input = json.parse(io.read(8192) or "")

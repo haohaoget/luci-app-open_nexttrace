@@ -11,13 +11,15 @@ APP = ROOT / "luci-app-open_nexttrace"
 class MetadataTests(unittest.TestCase):
     def test_acl_has_no_generic_shell_or_file_access(self):
         acl = json.loads((APP / "root/usr/share/rpcd/acl.d/luci-app-open_nexttrace.json").read_text())["luci-app-open_nexttrace"]
-        self.assertEqual(acl["read"], {"ubus": {"open_nexttrace": ["info", "status"]}})
-        self.assertEqual(acl["write"], {"ubus": {"open_nexttrace": ["start", "stop"]}})
+        self.assertEqual(acl["read"], {"ubus": {"open_nexttrace": ["info", "status"]}, "uci": ["open_nexttrace"]})
+        self.assertEqual(acl["write"], {"ubus": {"open_nexttrace": ["start", "stop"]}, "uci": ["open_nexttrace"]})
 
     def test_menu_points_to_real_view(self):
-        menu = json.loads((APP / "root/usr/share/luci/menu.d/luci-app-open_nexttrace.json").read_text())
+        menu = json.loads((APP / "root/usr/share/luci/menu.d/luci-app-open_nexttrace.json").read_text(encoding="utf-8"))
         for item in menu.values():
-            self.assertTrue((APP / ("htdocs/luci-static/resources/view/" + item["action"]["path"] + ".js")).is_file())
+            if item["action"]["type"] == "view":
+                self.assertTrue((APP / ("htdocs/luci-static/resources/view/" + item["action"]["path"] + ".js")).is_file())
+        self.assertTrue((APP / "root/etc/config/open_nexttrace").is_file())
 
     def test_hash_pins_and_lf_shebang(self):
         content = (ROOT / "open-nexttrace-core/version.mk").read_text()
@@ -34,8 +36,13 @@ class MetadataTests(unittest.TestCase):
             "aarch64_cortex-a76", "aarch64_generic",
         ):
             self.assertIn(value, workflow)
-        self.assertIn("bin/packages/**/*.apk", workflow)
-        self.assertIn("bin/packages/**/*.ipk", workflow)
+        self.assertIn(
+            "bin/packages/${{ matrix.arch }}/base/open-nexttrace-core*.${{ matrix.release.format }}",
+            workflow,
+        )
+        self.assertNotIn("bin/packages/**/*.apk", workflow)
+        self.assertNotIn("bin/packages/**/*.ipk", workflow)
+        self.assertNotIn("logs/**", workflow)
         self.assertIn("ghcr.io/openwrt/sdk:${{ matrix.arch }}-V${{ matrix.release.version }}", workflow)
         self.assertIn("bash /workspace/scripts/build-openwrt-packages.sh", workflow)
         self.assertNotIn("openwrt/gh-action-sdk", workflow)

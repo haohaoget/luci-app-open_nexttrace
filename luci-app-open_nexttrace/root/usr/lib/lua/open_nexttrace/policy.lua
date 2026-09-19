@@ -2,6 +2,21 @@
 -- Pure validation / argv construction. No user input is ever a shell command.
 local M = {}
 
+local function ipv4(value)
+    if type(value) ~= "string" then return false end
+    local count = 0
+    for part in value:gmatch("[^.]+") do
+        if not part:match("^%d+$") or tonumber(part) > 255 then return false end
+        count = count + 1
+    end
+    return count == 4 and not value:match("^%.") and not value:match("%.$")
+end
+
+local function ipv6(value)
+    return type(value) == "string" and #value <= 45 and value:find(":", 1, true) ~= nil and
+        value:match("^[0-9a-fA-F:]+$") ~= nil
+end
+
 local function integer(value, default, lo, hi, name)
     if value == nil then value = default end
     if type(value) ~= "number" or value ~= math.floor(value) or value < lo or value > hi then
@@ -15,7 +30,7 @@ function M.interfaces(dump)
     for _, item in ipairs(dump.interface or {}) do
         local device = item.l3_device or item.device
         if type(device) == "string" and device ~= "lo" and device:match("^[%w_.:@%-]+$") then
-            local addresses, families = {}, {}
+            local addresses, families, dns = {}, {}, {}
             for _, addr in ipairs(item["ipv4-address"] or {}) do
                 addresses[#addresses + 1] = addr.address
                 families.v4 = true
@@ -24,13 +39,16 @@ function M.interfaces(dump)
                 addresses[#addresses + 1] = addr.address
                 families.v6 = true
             end
+            for _, server in ipairs(item["dns-server"] or {}) do
+                if ipv4(server) or ipv6(server) then dns[#dns + 1] = server end
+            end
             local wan = false
             for _, route in ipairs(item.route or {}) do
                 if tonumber(route.mask) == 0 then wan = true end
             end
             result[#result + 1] = {
                 name = item.interface, device = device, up = item.up == true,
-                wan = wan, addresses = addresses, ipv4 = families.v4 == true,
+                wan = wan, addresses = addresses, dns = dns, ipv4 = families.v4 == true,
                 ipv6 = families.v6 == true
             }
         end
@@ -73,7 +91,8 @@ function M.build(input, interfaces, explicit_traceroute)
     local timeout = integer(input.timeout, 1000, 100, 5000, "超时")
     local port = integer(input.port, protocol == "udp" and 33494 or 80, 1, 65535, "端口")
     local provider = input.provider or "NextTrace-API"
-    if provider ~= "NextTrace-API" and provider ~= "IP.SB" and provider ~= "IPInfo" and provider ~= "disable-geoip" then
+    if provider ~= "NextTrace-API" and provider ~= "IP.SB" and provider ~= "IPInfo" and
+        provider ~= "IPAPI.com" and provider ~= "disable-geoip" then
         error("不支持的 IP 数据源", 0)
     end
     if input.rdns ~= nil and type(input.rdns) ~= "boolean" then error("无效的 rDNS 设置", 0) end
@@ -97,6 +116,30 @@ function M.build(input, interfaces, explicit_traceroute)
     if input.rdns == false then argv[#argv + 1] = "--no-rdns" end
     argv[#argv + 1] = target
     return argv
+end
+
+function M.resolver(input, interfaces)
+    local server = input.dns_server
+    if server == nil or server == "" or ipv4(input.target) or ipv6(input.target) then return nil end
+    if not ipv4(server) and not ipv6(server) then error("自定义 DNS 服务器必须是 IPv4 或 IPv6 地址", 0) end
+    local source = input.dns_source or ""
+    if type(source) ~= "string" then error("无效的 DNS 来源地址", 0) end
+    if source ~= "" then
+        local found = false
+        for _, iface in ipairs(interfaces) do
+            if iface.up then
+                for _, address in ipairs(iface.addresses or {}) do
+                    if address == source then found = true end
+                end
+            end
+        end
+        if not found then error("DNS 来源接口已离线或地址已变化，请刷新设置", 0) end
+        if ipv4(server) ~= ipv4(source) then error("DNS 服务器与来源接口地址类型不一致", 0) end
+    end
+    return {
+        target = input.target, family = input.family or "auto", server = server,
+        source = source, port = integer(input.dns_port, 53, 1, 65535, "DNS 端口"), timeout = 5000
+    }
 end
 
 return M

@@ -11,8 +11,10 @@ OpenWrt / LuCI 路由追踪可视化插件。界面参考 [OpenTrace](https://gi
 - Leaflet 地图随追踪更新；表格和地图互相定位、跨日期变更线连接、完整路径缩放、CSV 导出。
 - 出口接口默认是“默认出口（系统路由）”，此时**不传 `--dev`**；一个或多个 WAN 都保持系统默认选路。
 - 下拉框读取 netifd 的在线接口，优先展示带默认路由的 WAN，显示 `wan / wan6 · pppoe-wan` 这样的逻辑接口与实际设备对应关系。选中后传入实际 `l3_device`，适用于 PPPoE、VLAN、多 WAN，也保留 VPN / LAN 手动诊断选项。
+- 独立设置页将默认追踪参数写入 UCI；域名解析可使用系统默认、所选接口下发的 DNS 或自定义 DNS 服务器。接口/自定义模式可绑定所选接口的源地址，适配基于源地址选路的多 WAN。
+- IP 数据源支持 NextTrace、IPInfo、IP.SB、IP-API.com 和禁用地理查询。
 - 单台路由器同时一个任务，支持停止、刷新页面恢复当前任务、异常状态和日志展示；180 秒总时限、128 KiB 输出阈值，结果留在 `/tmp`，重启后清除。
-- 页面设置保存在当前浏览器；新任务保留默认出口，避免浏览器记住已失效的 WAN。正在运行/最近一次任务会显示该任务实际选择的出口。
+- 最近输入的目标保存在当前浏览器；默认参数、DNS 和默认接口保存在 `/etc/config/open_nexttrace`。正在运行/最近一次任务会显示该任务实际选择的出口。
 
 ## 目录
 
@@ -93,7 +95,7 @@ opkg install /tmp/open-nexttrace-core_*.ipk /tmp/luci-app-open_nexttrace_*.ipk
 
 - `Update NextTrace core`：每天 **北京时间 03:23** 检查最新正式 release，也可手动运行。读取 GitHub 资产的 SHA-256；没有 digest 时下载计算。必须取得全部支持架构，才原子更新 `open-nexttrace-core/version.mk`；拒绝预发布、缺失资产、非法 URL / 哈希和降级。仅文件变化时提交，无变化不创建提交。受保护分支若不允许机器人推送，需按仓库规则改用 PR 流程。
 - `Check plugin`：push / PR 运行 Node、Python、Lua 5.1 测试。
-- `Build OpenWrt packages`：手动触发或推送 `v*` 标签时，直接使用官方 `ghcr.io/openwrt/sdk` 容器构建 25.12.5 APK 和 24.10.8 IPK。矩阵包含 x86_64、mipsel_24kc、aarch64_cortex-a53、aarch64_cortex-a72、aarch64_cortex-a76、aarch64_generic；每个 artifact 名称都标明格式、架构和版本。容器更新全部 feed 索引，但只安装插件所需的依赖闭包；在执行 `make defconfig` 前同时放入并选中核心包和 LuCI 包、清理旧包元数据，再串行编译并检查两个安装包均已产出。
+- `Build OpenWrt packages`：手动触发或推送 `v*` 标签时，直接使用官方 `ghcr.io/openwrt/sdk` 容器构建 25.12.5 APK 和 24.10.8 IPK。矩阵包含 x86_64、mipsel_24kc、aarch64_cortex-a53、aarch64_cortex-a72、aarch64_cortex-a76、aarch64_generic；每个 artifact 名称都标明格式、架构和版本。容器会编译并检查核心包和 LuCI 包，但 artifact 仅收集对应架构 `base` 目录里的 `open-nexttrace-core` APK/IPK，不再上传依赖包、索引和构建日志。
 
 机器人用 `GITHUB_TOKEN` 推送更新通常不会再次触发 push 工作流；每日任务的职责是更新版本与哈希。需要新安装包时手动运行构建工作流。此更新不在路由器上静默下载、替换正在使用的核心。
 
@@ -106,7 +108,7 @@ python3 scripts/update-core.py --verify-downloads
 
 ## 运行行为与边界
 
-- 默认选路交给系统和现有策略路由。`--dev` 由核心解释，不修改 OpenWrt 网络配置或 mwan3 规则；DNS、GeoIP API 的网络访问仍由系统选路。实际多 WAN 出口应通过各 WAN 的抓包核对。
+- 默认选路交给系统和现有策略路由。`--dev` 由核心解释，不修改 OpenWrt 网络配置或 mwan3 规则。接口/自定义 DNS 模式使用 UDP DNS 并可绑定接口地址；最终出口仍取决于系统基于该源地址的路由规则。GeoIP API 访问仍由系统选路。实际多 WAN 出口应通过各 WAN 的抓包核对。
 - v1.7.3 没有新源码中的 `--traceroute` 参数。后端检测安装核心的 `--help`，仅在支持时使用该参数，兼容后续默认模式变化。
 - 地理位置来自所选数据源；接口地址、私网、中间节点可能没有坐标。地图仅连接每跳首个有坐标的响应，虚线跨过未定位跳点，不表示精确物理路径或完整 ECMP 拓扑。
 - 地图代码随包分发，瓦片由浏览器访问 OpenStreetMap；瓦片不可达时保留路由节点和表格，并显示提示。GeoIP 服务与 DNS 的可用性也会影响结果。
@@ -119,6 +121,7 @@ python3 scripts/update-core.py --verify-downloads
 node --test tests/*.test.cjs
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 lua5.1 tests/policy_test.lua
+lua5.1 tests/resolver_test.lua
 lua5.1 tests/backend_test.lua
 
 # 仅用于界面验证，模拟 RPC 和路由数据，不会发送探测

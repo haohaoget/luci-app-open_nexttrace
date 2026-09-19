@@ -80,6 +80,7 @@ local function fixture()
     local policy = dofile("luci-app-open_nexttrace/root/usr/lib/lua/open_nexttrace/policy.lua")
     local modules = {nixio = nixio, ["nixio.fs"] = fs, ["luci.jsonc"] = json,
         ["open_nexttrace.policy"] = policy,
+        ["open_nexttrace.resolver"] = dofile("luci-app-open_nexttrace/root/usr/lib/lua/open_nexttrace/resolver.lua"),
         ubus = {connect = function() return {call = function() return {interface = {}} end, close = function() end} end}}
     local env = setmetatable({io = fakeio, os = {time = function() return 1000 end, exit = function() end},
         require = function(name) return assert(modules[name], name) end}, {__index = _G})
