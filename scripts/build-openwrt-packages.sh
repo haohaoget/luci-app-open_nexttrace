@@ -16,8 +16,14 @@ esac
 cd /builder
 
 echo "Preparing OpenWrt feeds for ${TARGET_ARCH} (${PACKAGE_FORMAT})"
-./scripts/feeds update packages luci
-./scripts/feeds install -p luci luci-base luci-lib-nixio luci-lib-jsonc
+./scripts/feeds update -a
+./scripts/feeds install -p luci \
+	ca-bundle \
+	lua \
+	libubus-lua \
+	luci-base \
+	luci-lib-nixio \
+	luci-lib-jsonc
 
 # Use a conventional hyphenated build directory while retaining the published
 # package name luci-app-open_nexttrace in its Makefile.
@@ -28,13 +34,24 @@ cp -a /workspace/luci-app-open_nexttrace package/luci-app-open-nexttrace
 # feeds install may have generated package metadata before the local packages
 # existed. Force one clean metadata pass with both packages present.
 rm -f tmp/.packageinfo tmp/.packagedeps tmp/.config-package.in tmp/.config-feeds.in
+
+# Selecting the packages lets OpenWrt order and stage their complete dependency
+# graph. Calling an unselected package target can start LuCI libraries before
+# the base feed has installed headers such as lua.h and netlink/msg.h.
+cat >> .config <<'EOF'
+CONFIG_PACKAGE_open-nexttrace-core=m
+CONFIG_PACKAGE_luci-app-open_nexttrace=m
+EOF
 make defconfig
 
+grep -q '^CONFIG_PACKAGE_open-nexttrace-core=m$' .config
+grep -q '^CONFIG_PACKAGE_luci-app-open_nexttrace=m$' .config
+
 echo "Building open-nexttrace-core"
-make package/open-nexttrace-core/compile -j"$(nproc)" V=s
+make package/open-nexttrace-core/compile -j1 V=s
 
 echo "Building luci-app-open_nexttrace"
-make package/luci-app-open-nexttrace/compile -j"$(nproc)" V=s
+make package/luci-app-open-nexttrace/compile -j1 V=s
 
 for package in open-nexttrace-core luci-app-open_nexttrace; do
 	mapfile -t files < <(find /builder/bin/packages -type f -name "${package}*.${PACKAGE_FORMAT}")
