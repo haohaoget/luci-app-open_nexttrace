@@ -1,0 +1,3 @@
+* text=auto eol=lf
+*.png binary
+luci-app-open_nexttrace/htdocs/luci-static/resources/open_nexttrace/vendor/* -text

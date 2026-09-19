@@ -1,0 +1,26 @@
+name: Check plugin
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Lua 5.1
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Check JavaScript and protocol handling
+        run: node --test tests/*.test.cjs
+      - name: Test release updater and package metadata
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Test backend validation and lifecycle
+        run: |
+          lua5.1 tests/policy_test.lua
+          lua5.1 tests/backend_test.lua
+          luac5.1 -p luci-app-open_nexttrace/root/usr/libexec/rpcd/open_nexttrace

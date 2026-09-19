@@ -1,0 +1,8 @@
+{
+  "admin/network/open_nexttrace": {
+    "title": "Open NextTrace",
+    "order": 90,
+    "action": { "type": "view", "path": "open_nexttrace/main" },
+    "depends": { "acl": ["luci-app-open_nexttrace"] }
+  }
+}
