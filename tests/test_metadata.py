@@ -36,7 +36,22 @@ class MetadataTests(unittest.TestCase):
             self.assertIn(value, workflow)
         self.assertIn("bin/packages/**/*.apk", workflow)
         self.assertIn("bin/packages/**/*.ipk", workflow)
-        self.assertIn("No ${{ matrix.release.format }} package was produced", workflow)
+        self.assertIn("ghcr.io/openwrt/sdk:${{ matrix.arch }}-V${{ matrix.release.version }}", workflow)
+        self.assertIn("bash /workspace/scripts/build-openwrt-packages.sh", workflow)
+        self.assertNotIn("openwrt/gh-action-sdk", workflow)
+        build_script = (ROOT / "scripts/build-openwrt-packages.sh").read_text()
+        self.assertLess(
+            build_script.index("cp -a /workspace/open-nexttrace-core"),
+            build_script.index("make defconfig"),
+        )
+        self.assertLess(
+            build_script.index("cp -a /workspace/luci-app-open_nexttrace"),
+            build_script.index("make defconfig"),
+        )
+        self.assertIn("make package/open-nexttrace-core/compile", build_script)
+        self.assertIn("make package/luci-app-open_nexttrace/compile", build_script)
+        makefile = (APP / "Makefile").read_text()
+        self.assertIn("LUCI_DEPENDS:=+open-nexttrace-core", makefile)
 
     def test_bundled_leaflet_integrity(self):
         vendor = APP / "htdocs/luci-static/resources/open_nexttrace/vendor"

@@ -27,23 +27,37 @@ jobs:
             format: ipk
     steps:
       - uses: actions/checkout@v4
-      - name: Build with the OpenWrt SDK
-        uses: openwrt/gh-action-sdk@main
-        env:
-          ARCH: ${{ matrix.arch }}-${{ matrix.release.version }}
-          FEEDNAME: open_nexttrace
-          PACKAGES: open-nexttrace-core luci-app-open_nexttrace
-          V: s
-          NO_SHFMT_CHECK: '1'
+      - name: Prepare build directories
+        shell: bash
+        run: |
+          mkdir -p bin dl
+          chmod -R a+rwx bin dl
+      - name: Pull the official OpenWrt SDK
+        shell: bash
+        run: docker pull "ghcr.io/openwrt/sdk:${{ matrix.arch }}-V${{ matrix.release.version }}"
+      - name: Build with the official OpenWrt SDK
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace:ro" \
+            -v "${GITHUB_WORKSPACE}/bin:/builder/bin" \
+            -v "${GITHUB_WORKSPACE}/dl:/builder/dl" \
+            -e TERM=xterm \
+            "ghcr.io/openwrt/sdk:${{ matrix.arch }}-V${{ matrix.release.version }}" \
+            bash /workspace/scripts/build-openwrt-packages.sh \
+              "${{ matrix.release.format }}" \
+              "${{ matrix.arch }}"
       - name: Verify ${{ matrix.release.format }} packages
         shell: bash
         run: |
-          mapfile -t packages < <(find bin/packages -type f -name '*.${{ matrix.release.format }}')
-          if (( ${#packages[@]} == 0 )); then
-            echo "No ${{ matrix.release.format }} package was produced" >&2
-            exit 1
-          fi
-          printf '%s\n' "${packages[@]}"
+          for package in open-nexttrace-core luci-app-open_nexttrace; do
+            mapfile -t files < <(find bin/packages -type f -name "${package}*.${{ matrix.release.format }}")
+            if (( ${#files[@]} == 0 )); then
+              echo "No ${{ matrix.release.format }} package was produced for ${package}" >&2
+              exit 1
+            fi
+            printf '%s\n' "${files[@]}"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: open-nexttrace-${{ matrix.release.format }}-${{ matrix.arch }}-${{ matrix.release.version }}

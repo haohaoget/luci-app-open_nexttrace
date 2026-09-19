@@ -93,7 +93,7 @@ opkg install /tmp/open-nexttrace-core_*.ipk /tmp/luci-app-open_nexttrace_*.ipk
 
 - `Update NextTrace core`：每天 **北京时间 03:23** 检查最新正式 release，也可手动运行。读取 GitHub 资产的 SHA-256；没有 digest 时下载计算。必须取得全部支持架构，才原子更新 `open-nexttrace-core/version.mk`；拒绝预发布、缺失资产、非法 URL / 哈希和降级。仅文件变化时提交，无变化不创建提交。受保护分支若不允许机器人推送，需按仓库规则改用 PR 流程。
 - `Check plugin`：push / PR 运行 Node、Python、Lua 5.1 测试。
-- `Build OpenWrt packages`：手动触发或推送 `v*` 标签时，用官方 SDK action 同时构建 25.12.5 APK 和 24.10.8 IPK。矩阵包含 x86_64、mipsel_24kc、aarch64_cortex-a53、aarch64_cortex-a72、aarch64_cortex-a76、aarch64_generic；每个 artifact 名称都标明格式、架构和版本。
+- `Build OpenWrt packages`：手动触发或推送 `v*` 标签时，直接使用官方 `ghcr.io/openwrt/sdk` 容器构建 25.12.5 APK 和 24.10.8 IPK。矩阵包含 x86_64、mipsel_24kc、aarch64_cortex-a53、aarch64_cortex-a72、aarch64_cortex-a76、aarch64_generic；每个 artifact 名称都标明格式、架构和版本。容器在执行 `make defconfig` 前同时放入核心包和 LuCI 包，再分别编译并检查两个安装包均已产出。
 
 机器人用 `GITHUB_TOKEN` 推送更新通常不会再次触发 push 工作流；每日任务的职责是更新版本与哈希。需要新安装包时手动运行构建工作流。此更新不在路由器上静默下载、替换正在使用的核心。
 
