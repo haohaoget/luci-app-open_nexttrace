@@ -29,7 +29,7 @@ NTrace-core/             本地参考项目，不纳入插件构建或 Git
 
 ## 编译进 OpenWrt
 
-面向采用 JavaScript LuCI 的 OpenWrt，建议先在 **24.10** 验收。此目录是包含两个包的 feed，不是单个包；将两个软件包目录一起加入源码树。
+面向采用 JavaScript LuCI 的 OpenWrt，当前 GitHub Actions 同时使用 **25.12.5** SDK 构建 APK、使用 **24.10.8** SDK 构建 opkg/IPK。此目录是包含两个包的 feed，不是单个包；将两个软件包目录一起加入源码树。
 
 ```sh
 # 在 OpenWrt 源码根目录执行，将 /path/to/... 替换为本仓库位置
@@ -48,25 +48,36 @@ make package/open-nexttrace/luci-app-open_nexttrace/compile V=s
 
 也可发布此仓库后，在 `feeds.conf.default` 中加入 `src-git open_nexttrace <你的仓库地址>`，然后更新该 feed 并安装两个包。不要同时用复制目录和 feed 两种方式安装，以免重名。
 
-核心下载地址固定到版本，OpenWrt 下载阶段检查 SHA-256。核心保持官方二进制原样，不重新编译、不再次 strip；安装到 `/usr/libexec/open-nexttrace/nexttrace`，避免与已有 `/usr/bin/nexttrace` 冲突。完整核心在部分架构上体积较大，请根据固件剩余空间选择设备。
+核心下载地址固定到版本，OpenWrt 下载阶段检查 SHA-256。核心保持官方二进制原样，不重新编译、不再次 strip；按官方命令名安装到 `/usr/bin/nexttrace`，可以直接在 SSH 中运行 `nexttrace` 调试。软件包声明与其他 `nexttrace` 包冲突，避免两个包同时拥有同一路径。完整核心在部分架构上体积较大，请根据固件剩余空间选择设备。
 
 支持的映射：
 
 | OpenWrt 架构 | 上游资产后缀 |
 | --- | --- |
 | x86_64 / i386 | amd64 / 386 |
-| aarch64 | arm64 |
+| aarch64（aarch64_cortex-a53 / a72 / a76 / generic） | arm64 |
 | arm，Cortex-A / Cortex-R | armv7 |
 | arm，ARM1176 / ARM11 MPCore | armv6 |
 | 其他 arm | armv5（保守兼容） |
-| mips / mipsel | mips_softfloat / mipsle_softfloat |
+| mips / mipsel | 按 `CONFIG_SOFT_FLOAT` 选择 mips(le) 或 mips(le)_softfloat |
+| mips64 / mips64el | mips64 / mips64le |
+| powerpc64 / powerpc64le | ppc64 / ppc64le |
 | riscv64 / loongarch64 | riscv64 / loong64 |
+| s390x | s390x |
 
-未列出的架构不启用核心包。MIPS64 暂未加入，因为不能把上游 hardfloat 资产视为通用软浮点 OpenWrt 构建。ARM64 应匹配 64 位系统架构；32 位 ARM 系统即使 CPU 支持 ARM64，也应使用 ARM 资产。
+以上覆盖当前 NextTrace 发布页列出的全部 Linux 资产。MIPS64 上游只提供 mips64 / mips64le，没有 softfloat 变体，因此仍需由具体 OpenWrt SDK 和真机确认 ABI。ARM64 应匹配 64 位系统架构；32 位 ARM 系统即使 CPU 支持 ARM64，也应使用 ARM 资产。
 
 ## 安装独立软件包
 
-从与你设备架构及固件版本匹配的 SDK 构建产物中取出两个包。24.10 示例：
+从与你设备架构及固件版本匹配的 SDK 构建产物中取出两个包。OpenWrt 25.12 示例：
+
+```sh
+apk update
+apk add --allow-untrusted --force-non-repository /tmp/open-nexttrace-core-*.apk /tmp/luci-app-open_nexttrace-*.apk
+/etc/init.d/rpcd restart
+```
+
+OpenWrt 24.10 及其他使用 opkg 的固件安装 IPK：
 
 ```sh
 opkg update
@@ -74,7 +85,7 @@ opkg install /tmp/open-nexttrace-core_*.ipk /tmp/luci-app-open_nexttrace_*.ipk
 /etc/init.d/rpcd restart
 ```
 
-依赖包括 `luci-base`、`lua`、`luci-lib-nixio`、`luci-lib-jsonc`、`libubus-lua` 和 CA 证书。安装时由包管理器解决依赖。使用 apk 的系统需使用其对应 SDK 产出的 apk 包；不要跨格式安装。打开 LuCI 的 **网络 → Open NextTrace**，填写目标并开始即可，不需要另外运行核心的 Web 服务或开放端口。
+依赖包括 `luci-base`、`lua`、`luci-lib-nixio`、`luci-lib-jsonc`、`libubus-lua` 和 CA 证书。安装时由包管理器解决依赖。自行签名或配置可信软件源后可省略 `--allow-untrusted`。APK 与 IPK 必须匹配固件的包管理器、OpenWrt 版本和 CPU 架构，不要跨版本或跨格式安装。打开 LuCI 的 **网络 → Open NextTrace**，填写目标并开始即可，不需要另外运行核心的 Web 服务或开放端口。
 
 ## GitHub Actions 每日更新
 
@@ -82,7 +93,7 @@ opkg install /tmp/open-nexttrace-core_*.ipk /tmp/luci-app-open_nexttrace_*.ipk
 
 - `Update NextTrace core`：每天 **北京时间 03:23** 检查最新正式 release，也可手动运行。读取 GitHub 资产的 SHA-256；没有 digest 时下载计算。必须取得全部支持架构，才原子更新 `open-nexttrace-core/version.mk`；拒绝预发布、缺失资产、非法 URL / 哈希和降级。仅文件变化时提交，无变化不创建提交。受保护分支若不允许机器人推送，需按仓库规则改用 PR 流程。
 - `Check plugin`：push / PR 运行 Node、Python、Lua 5.1 测试。
-- `Build OpenWrt packages`：手动触发或推送 `v*` 标签时，用官方 SDK action 构建 x86_64、aarch64_cortex-a53、mipsel_24kc 的 24.10.0 包，并上传 artifact。其他设备可修改矩阵匹配其 SDK。
+- `Build OpenWrt packages`：手动触发或推送 `v*` 标签时，用官方 SDK action 同时构建 25.12.5 APK 和 24.10.8 IPK。矩阵包含 x86_64、mipsel_24kc、aarch64_cortex-a53、aarch64_cortex-a72、aarch64_cortex-a76、aarch64_generic；每个 artifact 名称都标明格式、架构和版本。
 
 机器人用 `GITHUB_TOKEN` 推送更新通常不会再次触发 push 工作流；每日任务的职责是更新版本与哈希。需要新安装包时手动运行构建工作流。此更新不在路由器上静默下载、替换正在使用的核心。
 
@@ -115,6 +126,6 @@ python3 -m http.server 8765 --bind 127.0.0.1
 # 打开 http://127.0.0.1:8765/tests/preview/
 ```
 
-Lua 生命周期测试模拟 nixio 接口；Makefile 映射测试使用 GNU make 和 SDK include 桩，**不等价于 OpenWrt 构建或真机验证**。本地 Windows 环境没有 OpenWrt SDK / 路由器，仍需执行工作流构建，并在设备上验收：默认 WAN、指定第二 WAN、IPv6、TCP/UDP、停止、刷新恢复、断网/GeoIP 不可达和只读 ACL。
+Lua 生命周期测试模拟 nixio 接口；Makefile 映射测试使用 GNU make 和 SDK include 桩，**不等价于 OpenWrt 构建**。本项目已在 aarch64、apk-tools 3 的 OpenWrt 路由器上验证 rpcd 注册、默认 WAN、指定第二 WAN、RAW 解析和任务状态；发布前仍应执行工作流构建，并在目标固件上验收 IPv6、TCP/UDP、停止、刷新恢复、断网/GeoIP 不可达和只读 ACL。
 
 许可证：GPL-3.0-only。上游与地图组件声明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。

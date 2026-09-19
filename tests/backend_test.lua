@@ -14,7 +14,8 @@ end
 local function fixture()
     local files, jsons, signals, waits = {}, {}, {}, {}
     local base = "/tmp/open-nexttrace/"
-    local model = { now = 0, sleep_step = 1, files = files, signals = signals, waits = waits, locks = 0 }
+    local model = { now = 0, sleep_step = 1, files = files, signals = signals, waits = waits,
+        locks = 0, open_modes = {} }
     local function stat(pid, start, state)
         return pid .. " (lua worker) " .. (state or "S") .. string.rep(" 0", 18) .. " " .. (start or "123")
     end
@@ -40,22 +41,24 @@ local function fixture()
             }
         end,
         popen = function(command)
-            check(command == "/usr/libexec/open-nexttrace/nexttrace --help 2>/dev/null", "help command must be constant")
+            check(command == "/usr/bin/nexttrace --help 2>/dev/null", "help command must be constant")
             return { read = function() return model.help or "--raw --map --dev" end, close = function() end }
         end
     }
     local fs = {
-        lstat = function() return {type = "dir", uid = 0} end, chmod = function() return true end,
+        lstat = function() return {type = "dir", uid = 0} end,
+        chmod = function(_, mode) model.chmod_mode = mode; return true end,
         access = function() return model.available ~= false end,
         rename = function(a, b) files[b], files[a] = files[a], nil; return true end,
         stat = function(path, key)
-            if path == "/usr/libexec/open-nexttrace/nexttrace" then return 1234 end
+            if path == "/usr/bin/nexttrace" then return 1234 end
             return #(files[path] or "")
         end
     }
     local nixio = {
-        const = {SIGCHLD = 17}, umask = function() end,
-        open = function(path, mode)
+        const = {SIGCHLD = 17}, umask = function(mode) model.umask_mode = mode end,
+        open = function(path, mode, permissions)
+            model.open_modes[path] = permissions
             if path:match("/stdout$") or path:match("/stderr$") then files[path] = "" end
             return {
                 lock = function() model.locks = model.locks + 1; return not model.busy end,
@@ -84,6 +87,14 @@ local function fixture()
     return chunk(), model
 end
 
+do
+    local b, m = fixture()
+    b.setup()
+    b.locked(function() return true end)
+    check(m.umask_mode == "0077", "umask uses the OpenWrt string form")
+    check(m.chmod_mode == "0700", "nixio filesystem modes use the OpenWrt string form")
+    check(m.open_modes["/tmp/open-nexttrace/control.lock"] == "0600", "lock mode is compatible with OpenWrt nixio")
+end
 do
     local b, m = fixture()
     m.waits[1], m.waits[2] = {false}, {42, "exited", 0}

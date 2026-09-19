@@ -14,7 +14,8 @@ REPOSITORY = "nxtrace/NTrace-core"
 API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 ARCHES = (
     "386", "amd64", "arm64", "armv5", "armv6", "armv7", "loong64",
-    "mips_softfloat", "mipsle_softfloat", "riscv64",
+    "mips", "mips64", "mips64le", "mipsle", "mips_softfloat",
+    "mipsle_softfloat", "ppc64", "ppc64le", "riscv64", "s390x",
 )
 ROOT = Path(__file__).resolve().parents[1]
 

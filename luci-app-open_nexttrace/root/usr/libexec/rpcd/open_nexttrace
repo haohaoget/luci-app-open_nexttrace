@@ -5,7 +5,7 @@ local fs = require "nixio.fs"
 local json = require "luci.jsonc"
 local policy = require "open_nexttrace.policy"
 local BASE = "/tmp/open-nexttrace"
-local CORE = "/usr/libexec/open-nexttrace/nexttrace"
+local CORE = "/usr/bin/nexttrace"
 local LIMIT = 128 * 1024
 local MAX_SECONDS = 180
 
@@ -33,17 +33,17 @@ local function save(value)
 end
 
 local function setup()
-    nixio.umask(63) -- 0077; task data is readable only by root.
-    if not fs.lstat(BASE) then fs.mkdir(BASE, 448) end -- 0700
+    nixio.umask("0077") -- Task data is readable only by root.
+    if not fs.lstat(BASE) then fs.mkdir(BASE, "0700") end
     local stat = fs.lstat(BASE)
     if not stat or stat.type ~= "dir" or stat.uid ~= 0 then
         error("追踪临时目录不可用", 0)
     end
-    assert(fs.chmod(BASE, 448))
+    assert(fs.chmod(BASE, "0700"))
 end
 
 local function locked(fn, wait)
-    local lock = assert(nixio.open(BASE .. "/control.lock", "w", 384))
+    local lock = assert(nixio.open(BASE .. "/control.lock", "w", "0600"))
     if not lock:lock(wait and "lock" or "tlock") then
         lock:close()
         return { error = "任务状态正在更新，请重试" }
@@ -100,8 +100,8 @@ local function supervise(id, argv)
         -- Wait for start() to publish the PID and release the control lock.
         local s = locked(function() return state() end, true)
         if s.id ~= id then error("任务已被替换") end
-        local output = assert(nixio.open(BASE .. "/stdout", "w", 384))
-        local errors = assert(nixio.open(BASE .. "/stderr", "w", 384))
+        local output = assert(nixio.open(BASE .. "/stdout", "w", "0600"))
+        local errors = assert(nixio.open(BASE .. "/stderr", "w", "0600"))
         child = assert(nixio.fork())
         if child == 0 then
             nixio.dup(output, nixio.stdout)

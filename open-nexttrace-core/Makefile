@@ -29,16 +29,43 @@ ifeq ($(ARCH),x86_64)
   NEXTTRACE_ARCH:=amd64
 endif
 ifeq ($(ARCH),mips)
-  NEXTTRACE_ARCH:=mips_softfloat
+  NEXTTRACE_ARCH:=mips
+  ifeq ($(CONFIG_SOFT_FLOAT),y)
+    NEXTTRACE_ARCH:=mips_softfloat
+  endif
 endif
 ifeq ($(ARCH),mipsel)
-  NEXTTRACE_ARCH:=mipsle_softfloat
+  NEXTTRACE_ARCH:=mipsle
+  ifeq ($(CONFIG_SOFT_FLOAT),y)
+    NEXTTRACE_ARCH:=mipsle_softfloat
+  endif
+endif
+ifeq ($(ARCH),mips64)
+  NEXTTRACE_ARCH:=mips64
+  ifeq ($(CONFIG_CPU_LITTLE_ENDIAN),y)
+    NEXTTRACE_ARCH:=mips64le
+  endif
+endif
+ifneq ($(filter mips64el mips64le,$(ARCH)),)
+  NEXTTRACE_ARCH:=mips64le
 endif
 ifeq ($(ARCH),riscv64)
   NEXTTRACE_ARCH:=riscv64
 endif
 ifeq ($(ARCH),loongarch64)
   NEXTTRACE_ARCH:=loong64
+endif
+ifeq ($(ARCH),loong64)
+  NEXTTRACE_ARCH:=loong64
+endif
+ifeq ($(ARCH),powerpc64)
+  NEXTTRACE_ARCH:=ppc64
+endif
+ifeq ($(ARCH),powerpc64le)
+  NEXTTRACE_ARCH:=ppc64le
+endif
+ifeq ($(ARCH),s390x)
+  NEXTTRACE_ARCH:=s390x
 endif
 
 PKG_SOURCE:=nexttrace-$(PKG_VERSION)_linux_$(NEXTTRACE_ARCH)
@@ -58,7 +85,8 @@ define Package/open-nexttrace-core
   CATEGORY:=Network
   TITLE:=NextTrace upstream prebuilt core
   URL:=https://github.com/nxtrace/NTrace-core
-  DEPENDS:=@(aarch64||arm||i386||x86_64||mips||mipsel||riscv64||loongarch64) +ca-bundle
+  DEPENDS:=@(aarch64||arm||i386||x86_64||mips||mipsel||mips64||mips64el||mips64le||riscv64||loongarch64||loong64||powerpc64||powerpc64le||s390x) +ca-bundle
+  CONFLICTS:=nexttrace
 endef
 
 define Package/open-nexttrace-core/description
@@ -79,8 +107,8 @@ define Build/Compile
 endef
 
 define Package/open-nexttrace-core/install
-	$(INSTALL_DIR) $(1)/usr/libexec/open-nexttrace $(1)/usr/share/open-nexttrace
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/nexttrace $(1)/usr/libexec/open-nexttrace/nexttrace
+	$(INSTALL_DIR) $(1)/usr/bin $(1)/usr/share/open-nexttrace
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/nexttrace $(1)/usr/bin/nexttrace
 	printf '%s\n' '$(NEXTTRACE_TAG)' > $(1)/usr/share/open-nexttrace/version
 endef
 

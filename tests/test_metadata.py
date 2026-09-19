@@ -21,10 +21,22 @@ class MetadataTests(unittest.TestCase):
 
     def test_hash_pins_and_lf_shebang(self):
         content = (ROOT / "open-nexttrace-core/version.mk").read_text()
-        self.assertEqual(len(re.findall(r"^NEXTTRACE_HASH_[\w]+:=[0-9a-f]{64}$", content, re.M)), 10)
+        self.assertEqual(len(re.findall(r"^NEXTTRACE_HASH_[\w]+:=[0-9a-f]{64}$", content, re.M)), 17)
         backend = (APP / "root/usr/libexec/rpcd/open_nexttrace").read_bytes()
         self.assertTrue(backend.startswith(b"#!/usr/bin/lua\n"))
         self.assertNotIn(b"\r\n", backend)
+
+    def test_build_matrix_covers_apk_ipk_and_arm64_variants(self):
+        workflow = (ROOT / ".github/workflows/build.yml").read_text()
+        for value in (
+            "25.12.5", "format: apk", "24.10.8", "format: ipk",
+            "aarch64_cortex-a53", "aarch64_cortex-a72",
+            "aarch64_cortex-a76", "aarch64_generic",
+        ):
+            self.assertIn(value, workflow)
+        self.assertIn("bin/packages/**/*.apk", workflow)
+        self.assertIn("bin/packages/**/*.ipk", workflow)
+        self.assertIn("No ${{ matrix.release.format }} package was produced", workflow)
 
     def test_bundled_leaflet_integrity(self):
         vendor = APP / "htdocs/luci-static/resources/open_nexttrace/vendor"

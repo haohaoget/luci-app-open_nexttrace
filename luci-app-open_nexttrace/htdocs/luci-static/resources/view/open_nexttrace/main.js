@@ -82,7 +82,7 @@ return view.extend({
             el('link', { rel: 'stylesheet', href: L.resource('open_nexttrace/style.css') }),
             el('header', { 'class': 'ont-heading' }, [
                 el('div', {}, [el('h2', {}, 'Open NextTrace'), el('p', {}, '从路由器出发，看清每一跳。')]),
-                el('span', { 'class': 'ont-version' }, 'NextTrace ' + (data[0].version || '未安装'))
+                el('span', { 'class': 'ont-version' }, 'NextTrace ' + (data[0].version || (data[0].available ? '已安装' : '未安装')))
             ]),
             el('section', { 'class': 'ont-toolbar' }, [
                 field('追踪目标', this.target, 'ont-target'), field('协议', this.protocol),
