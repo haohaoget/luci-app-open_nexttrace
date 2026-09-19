@@ -40,6 +40,13 @@ class MetadataTests(unittest.TestCase):
         self.assertIn("bash /workspace/scripts/build-openwrt-packages.sh", workflow)
         self.assertNotIn("openwrt/gh-action-sdk", workflow)
         build_script = (ROOT / "scripts/build-openwrt-packages.sh").read_text()
+        self.assertIn("feeds update packages luci", build_script)
+        self.assertNotIn("feeds update -a", build_script)
+        self.assertNotIn("feeds install -a", build_script)
+        self.assertIn(
+            "feeds install -p luci luci-base luci-lib-nixio luci-lib-jsonc",
+            build_script,
+        )
         self.assertLess(
             build_script.index("cp -a /workspace/open-nexttrace-core"),
             build_script.index("make defconfig"),
@@ -49,9 +56,12 @@ class MetadataTests(unittest.TestCase):
             build_script.index("make defconfig"),
         )
         self.assertIn("make package/open-nexttrace-core/compile", build_script)
-        self.assertIn("make package/luci-app-open_nexttrace/compile", build_script)
+        self.assertIn("make package/luci-app-open-nexttrace/compile", build_script)
         makefile = (APP / "Makefile").read_text()
-        self.assertIn("LUCI_DEPENDS:=+open-nexttrace-core", makefile)
+        self.assertIn("PKG_NAME:=luci-app-open_nexttrace", makefile)
+        self.assertIn("include $(INCLUDE_DIR)/package.mk", makefile)
+        self.assertIn("DEPENDS:=+open-nexttrace-core", makefile)
+        self.assertNotIn("feeds/luci/luci.mk", makefile)
 
     def test_bundled_leaflet_integrity(self):
         vendor = APP / "htdocs/luci-static/resources/open_nexttrace/vendor"

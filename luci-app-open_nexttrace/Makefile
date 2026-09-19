@@ -1,14 +1,40 @@
 include $(TOPDIR)/rules.mk
 
-LUCI_TITLE:=OpenTrace-style visual traceroute for OpenWrt
-LUCI_DEPENDS:=+open-nexttrace-core +luci-base +lua +luci-lib-nixio +luci-lib-jsonc +libubus-lua
-LUCI_PKGARCH:=all
+PKG_NAME:=luci-app-open_nexttrace
 PKG_VERSION:=0.1.0
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-3.0-only
+PKGARCH:=all
 
-define Build/Prepare/luci-app-open_nexttrace
-	chmod 0755 $(PKG_BUILD_DIR)/root/usr/libexec/rpcd/open_nexttrace
+include $(INCLUDE_DIR)/package.mk
+
+define Package/luci-app-open_nexttrace
+  SECTION:=luci
+  CATEGORY:=LuCI
+  SUBMENU:=3. Applications
+  TITLE:=OpenTrace-style visual traceroute for OpenWrt
+  URL:=https://github.com/haohaoget/luci-app-open_nexttrace
+  DEPENDS:=+open-nexttrace-core +luci-base +lua +luci-lib-nixio +luci-lib-jsonc +libubus-lua
 endef
 
-include $(TOPDIR)/feeds/luci/luci.mk
+define Package/luci-app-open_nexttrace/description
+ Browser-based NextTrace route visualization with multi-WAN interface selection.
+endef
+
+define Build/Prepare
+endef
+
+define Build/Configure
+endef
+
+define Build/Compile
+endef
+
+define Package/luci-app-open_nexttrace/install
+	$(INSTALL_DIR) $(1) $(1)/www
+	$(CP) $(CURDIR)/root/. $(1)/
+	$(CP) $(CURDIR)/htdocs/. $(1)/www/
+	chmod 0755 $(1)/usr/libexec/rpcd/open_nexttrace
+endef
+
+$(eval $(call BuildPackage,luci-app-open_nexttrace))
