@@ -31,7 +31,6 @@ function select(items, value) {
 function field(title, input, cls) {
     return el('label', { 'class': 'ont-field ' + (cls || '') }, [el('span', {}, title), input]);
 }
-function number(value, min, max) { return el('input', { type: 'number', value: value, min: min, max: max, step: 1 }); }
 
 return view.extend({
     handleSave: null, handleSaveApply: null, handleReset: null,
@@ -51,6 +50,8 @@ return view.extend({
             max_hops: Number(uci.get('open_nexttrace', 'main', 'max_hops')) || 30,
             queries: Number(uci.get('open_nexttrace', 'main', 'queries')) || 3,
             timeout: Number(uci.get('open_nexttrace', 'main', 'timeout')) || 1000,
+            tcp_port: Number(uci.get('open_nexttrace', 'main', 'tcp_port')) || 80,
+            udp_port: Number(uci.get('open_nexttrace', 'main', 'udp_port')) || 33494,
             rdns: uci.get('open_nexttrace', 'main', 'rdns') !== '0',
             dns_mode: uci.get('open_nexttrace', 'main', 'dns_mode') || 'system',
             dns_interface: uci.get('open_nexttrace', 'main', 'dns_interface') || '',
@@ -65,19 +66,11 @@ return view.extend({
             autocomplete: 'off', spellcheck: 'false', value: recent.target || '' });
         this.protocol = select([['icmp', 'ICMP'], ['tcp', 'TCP'], ['udp', 'UDP']], this.settings.protocol);
         this.family = select([['auto', '自动'], ['4', 'IPv4'], ['6', 'IPv6']], this.settings.family);
+        this.dnsMode = select([['system', '系统默认'], ['interface', 'WAN 接口 DNS'],
+            ['custom', '自定义 DNS' + (this.settings.dns_server ? ' · ' + this.settings.dns_server : '')]], this.settings.dns_mode);
         this.device = select([['', '默认出口（系统路由）']], '');
         this.provider = select([['NextTrace-API', 'NextTrace'], ['IPInfo', 'IPInfo'], ['IP.SB', 'IP.SB'],
             ['IPAPI.com', 'IP-API.com'], ['disable-geoip', '禁用']], this.settings.provider);
-        this.maxHops = number(this.settings.max_hops, 1, 64);
-        this.queries = number(this.settings.queries, 1, 5);
-        this.timeout = number(this.settings.timeout, 100, 5000);
-        this.port = number(80, 1, 65535);
-        this.rdns = el('input', { type: 'checkbox', checked: this.settings.rdns ? '' : null });
-        this.protocol.addEventListener('change', function() {
-            self.port.value = self.protocol.value === 'udp' ? '33494' : '80';
-            self.port.disabled = self.protocol.value === 'icmp';
-        });
-        this.port.disabled = this.protocol.value === 'icmp';
         this.message = el('span', { role: 'status', 'aria-live': 'polite' }, '准备就绪');
         this.summary = el('span', { 'class': 'ont-muted' }, '等待开始追踪');
         this.body = el('tbody');
@@ -86,7 +79,6 @@ return view.extend({
         this.startButton = el('button', { 'class': 'cbi-button cbi-button-action ont-start', click: function() { self.begin(); } }, '开始追踪');
         this.stopButton = el('button', { 'class': 'cbi-button ont-stop', disabled: '', click: function() { self.cancel(); } }, '停止');
         this.exportButton = el('button', { 'class': 'cbi-button', disabled: '', click: function() { self.exportCSV(); } }, '导出 CSV');
-        this.refreshButton = el('button', { 'class': 'cbi-button', title: '重新读取 WAN、PPPoE、VPN 等接口', click: function() { self.refreshInterfaces(); } }, '刷新接口');
         this.map = el('iframe', { 'class': 'ont-map', title: '逐跳路由地图', src: L.resource('open_nexttrace/map.html') });
         this.map.addEventListener('load', function() { self.sendMap(); });
         this.mapListener = function(event) {
@@ -94,8 +86,7 @@ return view.extend({
             if (event.data.type === 'open-nexttrace-select') self.highlight(event.data.key);
         };
         window.addEventListener('message', this.mapListener);
-        this.controls = [this.target, this.protocol, this.family, this.device, this.provider,
-            this.maxHops, this.queries, this.timeout, this.port, this.rdns];
+        this.controls = [this.target, this.protocol, this.family, this.dnsMode, this.provider, this.device];
         this.root = el('div', { 'class': 'ont-app' }, [
             el('link', { rel: 'stylesheet', href: L.resource('open_nexttrace/style.css') }),
             // Some LuCI themes style every semantic <header> as the fixed top
@@ -107,15 +98,9 @@ return view.extend({
             ]),
             el('section', { 'class': 'ont-toolbar' }, [
                 field('追踪目标', this.target, 'ont-target'), field('协议', this.protocol),
-                field('地址类型', this.family), field('出口接口', this.device, 'ont-device'),
+                field('地址类型', this.family), field('DNS 提供方', this.dnsMode, 'ont-dns'),
+                field('IP 解析 API', this.provider, 'ont-provider'), field('WAN 口', this.device, 'ont-device'),
                 el('div', { 'class': 'ont-actions' }, [this.startButton, this.stopButton])
-            ]),
-            el('details', { 'class': 'ont-settings' }, [el('summary', {}, '追踪设置'),
-                el('div', { 'class': 'ont-settings-grid' }, [field('IP 数据源', this.provider),
-                    field('最大跳数', this.maxHops), field('每跳探测次数', this.queries),
-                    field('探测超时 (ms)', this.timeout), field('目标端口', this.port),
-                    field('反向 DNS 查询', this.rdns), this.refreshButton]),
-                el('p', { 'class': 'ont-muted' }, '默认出口遵循系统路由；选择接口后使用该设备探测。DNS 与 IP 地理查询仍使用系统网络。单次追踪最长 180 秒。')
             ]),
             el('div', { 'class': 'ont-statusbar' }, [this.message, this.summary, this.exportButton]),
             el('section', { 'class': 'ont-results', 'aria-label': '路由追踪结果' }, [
@@ -175,24 +160,14 @@ return view.extend({
         }, this);
     },
 
-    refreshInterfaces: function() {
-        var self = this;
-        this.refreshButton.disabled = true;
-        return info().then(checked).then(function(result) {
-            self.available = result.available;
-            self.interfaces = result.interfaces || [];
-            self.populateInterfaces(result.interfaces || [], self.device.value);
-            self.setMessage('接口列表已更新');
-            self.setBusy(self.running);
-        }).catch(function(e) { self.setMessage(e.message, true); }).finally(function() { self.refreshButton.disabled = false; });
-    },
-
     resolverOptions: function() {
-        var mode = this.settings.dns_mode;
+        var mode = this.dnsMode.value;
         if (mode === 'system') return { server: '', port: 53, source: '' };
         var selected = this.interfaces.find(function(iface) {
-            return iface.name === this.settings.dns_interface && iface.up;
+            return iface.up && ((this.device.value && iface.device === this.device.value) ||
+                (!this.device.value && this.settings.dns_interface && iface.name === this.settings.dns_interface));
         }, this);
+        if (!selected && !this.device.value) selected = this.interfaces.find(function(iface) { return iface.up && iface.wan; });
         var server = mode === 'custom' ? this.settings.dns_server :
             (selected && selected.dns && selected.dns[0]) || '';
         if (!server) throw new Error(mode === 'custom' ? '请在设置页填写自定义 DNS 服务器' : '所选接口没有可用的 DNS 服务器');
@@ -211,18 +186,17 @@ return view.extend({
     setBusy: function(running) {
         this.running = running;
         this.controls.forEach(function(control) { control.disabled = running || !this.canWrite; }, this);
-        this.port.disabled = running || !this.canWrite || this.protocol.value === 'icmp';
         this.startButton.disabled = running || !this.available || !this.canWrite;
         this.stopButton.disabled = !running || !this.canWrite;
-        this.refreshButton.disabled = running;
     },
 
     begin: function() {
         var self = this;
         if (!this.controls.every(function(control) { return control.reportValidity(); })) return;
         var options = { target: this.target.value.trim(), protocol: this.protocol.value, family: this.family.value,
-            device: this.device.value, max_hops: Number(this.maxHops.value), queries: Number(this.queries.value),
-            timeout: Number(this.timeout.value), port: Number(this.port.value), provider: this.provider.value, rdns: this.rdns.checked };
+            device: this.device.value, max_hops: this.settings.max_hops, queries: this.settings.queries,
+            timeout: this.settings.timeout, port: this.protocol.value === 'udp' ? this.settings.udp_port : this.settings.tcp_port,
+            provider: this.provider.value, rdns: this.settings.rdns };
         if (!options.target) { this.target.focus(); this.setMessage('请输入追踪目标', true); return; }
         var dns;
         try { dns = this.resolverOptions(); } catch (error) { this.setMessage(error.message, true); return; }
@@ -252,19 +226,6 @@ return view.extend({
         var changedStatus = this.lastStatus !== result.status;
         this.lastStatus = result.status;
         var changedJob = result.id !== this.jobId;
-        if (changedJob && result.options) {
-            var o = result.options;
-            this.target.value = o.target || '';
-            this.protocol.value = o.protocol || 'icmp';
-            this.family.value = o.family || 'auto';
-            this.device.value = o.device || '';
-            this.provider.value = o.provider || 'NextTrace-API';
-            this.maxHops.value = o.max_hops || 30;
-            this.queries.value = o.queries || 3;
-            this.timeout.value = o.timeout || 1000;
-            this.port.value = o.port || 80;
-            this.rdns.checked = o.rdns !== false;
-        }
         this.jobId = result.id;
         this.setBusy(result.status === 'running');
         var labels = { idle: '准备就绪', running: '正在追踪', done: '追踪结束', stopped: '已停止', error: '追踪失败' };

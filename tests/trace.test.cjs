@@ -58,6 +58,29 @@ test('status polling survives LuCI immediate first tick before the view is mount
     assert.match(source, /self\.wasConnected = true;\s*if \(self\.starting\)/);
     assert.doesNotMatch(source, /if \(!self\.root\.isConnected\) \{\s*poll\.remove\(self\.pollFn\)/);
 });
+test('trace toolbar keeps only per-run routing and provider choices', () => {
+    const source = fs.readFileSync(path.join(resources, 'view/open_nexttrace/main.js'), 'utf8');
+    for (const label of ['协议', '地址类型', 'DNS 提供方', 'IP 解析 API', 'WAN 口'])
+        assert.ok(source.includes(`field('${label}'`), label);
+    for (const label of ['追踪设置', "field('最大跳数'", "field('每跳探测次数'", "field('探测超时 (ms)'",
+        "field('目标端口'", "field('反向 DNS 查询'"])
+        assert.ok(!source.includes(label), label);
+    assert.match(source, /max_hops: this\.settings\.max_hops/);
+    assert.match(source, /this\.protocol\.value === 'udp' \? this\.settings\.udp_port : this\.settings\.tcp_port/);
+});
+test('interface DNS follows the WAN selected for this trace', () => {
+    const source = fs.readFileSync(path.join(resources, 'view/open_nexttrace/main.js'), 'utf8');
+    const view = new Function('view', 'rpc', 'poll', 'uci', 'trace', 'L', 'E', source)(
+        {extend:x=>x}, {declare:()=>()=>{}}, {}, {}, trace, {}, () => {});
+    view.dnsMode = {value: 'interface'};
+    view.device = {value: 'wan.v2'};
+    view.settings = {dns_interface: 'wan', dns_server: '8.8.8.8', dns_port: 53};
+    view.interfaces = [
+        {name:'wan', device:'wan', up:true, wan:true, dns:['1.1.1.1'], addresses:['10.0.0.2']},
+        {name:'wan_cmcc', device:'wan.v2', up:true, wan:true, dns:['223.5.5.5'], addresses:['10.0.1.2']}
+    ];
+    assert.deepEqual(view.resolverOptions(), {server:'223.5.5.5', port:53, source:'10.0.1.2'});
+});
 test('LuCI rows render remote hostnames and GeoIP fields as text, never HTML', () => {
     const unsafe = [];
     const E = (tag, attrs, children) => {

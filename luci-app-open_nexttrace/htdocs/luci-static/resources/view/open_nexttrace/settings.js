@@ -12,7 +12,7 @@ return view.extend({
 
     render: function(data) {
         var m = new form.Map('open_nexttrace', 'Open NextTrace 设置',
-            '这些设置作为新追踪任务的默认值。追踪页仍可临时选择不同的出口接口和参数。');
+            '跳数、探测次数、超时、端口和 rDNS 始终以本页为准；追踪页可临时选择协议、地址类型、DNS、IP 解析 API 和 WAN 口。');
         var s = m.section(form.NamedSection, 'main', 'open_nexttrace', '默认追踪参数');
         s.anonymous = true;
         s.addremove = false;
@@ -40,6 +40,10 @@ return view.extend({
         o.datatype = 'range(1,5)'; o.default = '3';
         o = s.option(form.Value, 'timeout', '探测超时 (ms)');
         o.datatype = 'range(100,5000)'; o.default = '1000';
+        o = s.option(form.Value, 'tcp_port', 'TCP 目标端口');
+        o.datatype = 'port'; o.default = '80';
+        o = s.option(form.Value, 'udp_port', 'UDP 目标端口');
+        o.datatype = 'port'; o.default = '33494';
         o = s.option(form.Flag, 'rdns', '反向 DNS 查询');
         o.default = o.enabled;
 

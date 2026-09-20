@@ -11,7 +11,8 @@ OpenWrt / LuCI 路由追踪可视化插件。界面参考 [OpenTrace](https://gi
 - Leaflet 地图随追踪更新；表格和地图互相定位、跨日期变更线连接、完整路径缩放、CSV 导出。
 - 出口接口默认是“默认出口（系统路由）”，此时**不传 `--dev`**；一个或多个 WAN 都保持系统默认选路。
 - 下拉框读取 netifd 的在线接口，优先展示带默认路由的 WAN，显示 `wan / wan6 · pppoe-wan` 这样的逻辑接口与实际设备对应关系。选中后传入实际 `l3_device`，适用于 PPPoE、VLAN、多 WAN，也保留 VPN / LAN 手动诊断选项。
-- 独立设置页将默认追踪参数写入 UCI；域名解析可使用系统默认、所选接口下发的 DNS 或自定义 DNS 服务器。接口/自定义模式可绑定所选接口的源地址，适配基于源地址选路的多 WAN。
+- 独立设置页将参数写入 UCI。跳数、探测次数、超时、TCP/UDP 端口和 rDNS 始终以设置页为准；追踪页只临时选择协议、地址类型、DNS 提供方、IP 解析 API 和 WAN 口。
+- 域名解析可使用系统默认、所选 WAN 下发的 DNS 或设置页中的自定义 DNS 服务器。接口/自定义模式可绑定所选接口的源地址，适配基于源地址选路的多 WAN。
 - IP 数据源支持 NextTrace、IPInfo、IP.SB、IP-API.com 和禁用地理查询。
 - 单台路由器同时一个任务，支持停止、刷新页面恢复当前任务、异常状态和日志展示；180 秒总时限、128 KiB 输出阈值，结果留在 `/tmp`，重启后清除。
 - 最近输入的目标保存在当前浏览器；默认参数、DNS 和默认接口保存在 `/etc/config/open_nexttrace`。正在运行/最近一次任务会显示该任务实际选择的出口。
@@ -95,7 +96,9 @@ opkg install /tmp/open-nexttrace-core_*.ipk /tmp/luci-app-open_nexttrace_*.ipk
 
 - `Update NextTrace core`：每天 **北京时间 03:23** 检查最新正式 release，也可手动运行。读取 GitHub 资产的 SHA-256；没有 digest 时下载计算。必须取得全部支持架构，才原子更新 `open-nexttrace-core/version.mk`；拒绝预发布、缺失资产、非法 URL / 哈希和降级。仅文件变化时提交，无变化不创建提交。受保护分支若不允许机器人推送，需按仓库规则改用 PR 流程。
 - `Check plugin`：push / PR 运行 Node、Python、Lua 5.1 测试。
-- `Build OpenWrt packages`：手动触发或推送 `v*` 标签时，直接使用官方 `ghcr.io/openwrt/sdk` 容器构建 25.12.5 APK 和 24.10.8 IPK。矩阵包含 x86_64、mipsel_24kc、aarch64_cortex-a53、aarch64_cortex-a72、aarch64_cortex-a76、aarch64_generic；每个 artifact 名称都标明格式、架构和版本。容器会编译并检查核心包和 LuCI 包，但 artifact 仅收集对应架构 `base` 目录里的 `open-nexttrace-core` APK/IPK，不再上传依赖包、索引和构建日志。
+- `Build OpenWrt packages`：手动触发、发布 Release，或推送 `v*` / `V*` 标签时，直接使用官方 `ghcr.io/openwrt/sdk` 容器构建 25.12.5 APK 和 24.10.8 IPK。矩阵包含 x86_64、mipsel_24kc、aarch64_cortex-a53、aarch64_cortex-a72、aarch64_cortex-a76、aarch64_generic；每个 artifact 名称都标明格式、架构和版本。artifact 只收集对应架构 `base` 目录里的 `open-nexttrace-core` 与 `luci-app-open_nexttrace` APK/IPK，不上传依赖包、索引和构建日志。全部 12 个矩阵任务成功后，工作流把 24 个带架构标识的 APK/IPK 上传到对应 GitHub Release。
+
+已经存在但没有软件包的 Release（例如 `V0.1`），可在 Actions 中手动运行 `Build OpenWrt packages`，将 `release_tag` 填为 `V0.1`。留空时仅生成 Actions artifacts，不修改 Release。
 
 机器人用 `GITHUB_TOKEN` 推送更新通常不会再次触发 push 工作流；每日任务的职责是更新版本与哈希。需要新安装包时手动运行构建工作流。此更新不在路由器上静默下载、替换正在使用的核心。
 

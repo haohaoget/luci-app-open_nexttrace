@@ -40,9 +40,21 @@ class MetadataTests(unittest.TestCase):
             "bin/packages/${{ matrix.arch }}/base/open-nexttrace-core*.${{ matrix.release.format }}",
             workflow,
         )
+        self.assertIn(
+            "bin/packages/${{ matrix.arch }}/base/luci-app-open_nexttrace*.${{ matrix.release.format }}",
+            workflow,
+        )
         self.assertNotIn("bin/packages/**/*.apk", workflow)
         self.assertNotIn("bin/packages/**/*.ipk", workflow)
         self.assertNotIn("logs/**", workflow)
+        self.assertIn('package_dir="bin/packages/${{ matrix.arch }}/base"', workflow)
+        self.assertIn('find "$package_dir" -maxdepth 1', workflow)
+        self.assertIn("tags: ['v*', 'V*']", workflow)
+        self.assertIn("types: [published]", workflow)
+        self.assertIn("release_tag:", workflow)
+        self.assertIn("gh release upload", workflow)
+        self.assertIn("GH_REPO: ${{ github.repository }}", workflow)
+        self.assertIn("test \"$(find release-assets -maxdepth 1 -type f | wc -l)\" -eq 24", workflow)
         self.assertIn("ghcr.io/openwrt/sdk:${{ matrix.arch }}-V${{ matrix.release.version }}", workflow)
         self.assertIn("bash /workspace/scripts/build-openwrt-packages.sh", workflow)
         self.assertNotIn("openwrt/gh-action-sdk", workflow)
@@ -72,6 +84,32 @@ class MetadataTests(unittest.TestCase):
         self.assertIn("include $(INCLUDE_DIR)/package.mk", makefile)
         self.assertIn("DEPENDS:=+open-nexttrace-core", makefile)
         self.assertNotIn("feeds/luci/luci.mk", makefile)
+        config = (APP / "root/etc/config/open_nexttrace").read_text(encoding="utf-8")
+        self.assertIn("option tcp_port '80'", config)
+        self.assertIn("option udp_port '33494'", config)
+
+    def test_github_actions_use_node24_releases(self):
+        workflows = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in (ROOT / ".github/workflows").glob("*.yml")
+        }
+        combined = "\n".join(workflows.values())
+        for action in (
+            "actions/checkout@v7",
+            "actions/setup-node@v7",
+            "actions/setup-python@v7",
+            "actions/upload-artifact@v7",
+            "actions/download-artifact@v8",
+        ):
+            self.assertIn(action, combined)
+        for action in (
+            "actions/checkout@v4",
+            "actions/setup-node@v4",
+            "actions/setup-python@v5",
+            "actions/upload-artifact@v4",
+            "actions/download-artifact@v4",
+        ):
+            self.assertNotIn(action, combined)
 
     def test_bundled_leaflet_integrity(self):
         vendor = APP / "htdocs/luci-static/resources/open_nexttrace/vendor"

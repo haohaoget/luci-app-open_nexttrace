@@ -1,8 +1,15 @@
 name: Build OpenWrt packages
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to receive packages, for example V0.1
+        required: false
+        type: string
+  release:
+    types: [published]
   push:
-    tags: ['v*']
+    tags: ['v*', 'V*']
 permissions:
   contents: read
 jobs:
@@ -26,7 +33,7 @@ jobs:
           - version: '24.10.8'
             format: ipk
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Prepare build directories
         shell: bash
         run: |
@@ -50,16 +57,71 @@ jobs:
       - name: Verify ${{ matrix.release.format }} packages
         shell: bash
         run: |
+          package_dir="bin/packages/${{ matrix.arch }}/base"
           for package in open-nexttrace-core luci-app-open_nexttrace; do
-            mapfile -t files < <(find bin/packages -type f -name "${package}*.${{ matrix.release.format }}")
+            mapfile -t files < <(find "$package_dir" -maxdepth 1 -type f -name "${package}*.${{ matrix.release.format }}")
             if (( ${#files[@]} == 0 )); then
-              echo "No ${{ matrix.release.format }} package was produced for ${package}" >&2
+              echo "No ${{ matrix.release.format }} package was produced in ${package_dir} for ${package}" >&2
               exit 1
             fi
             printf '%s\n' "${files[@]}"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: open-nexttrace-${{ matrix.release.format }}-${{ matrix.arch }}-${{ matrix.release.version }}
-          path: bin/packages/${{ matrix.arch }}/base/open-nexttrace-core*.${{ matrix.release.format }}
+          path: |
+            bin/packages/${{ matrix.arch }}/base/open-nexttrace-core*.${{ matrix.release.format }}
+            bin/packages/${{ matrix.arch }}/base/luci-app-open_nexttrace*.${{ matrix.release.format }}
           if-no-files-found: error
+
+  release:
+    name: Upload packages to release
+    needs: build
+    if: >-
+      github.event_name == 'release' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: open-nexttrace-*
+          path: downloaded
+      - name: Prepare architecture-specific release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p release-assets
+          for directory in downloaded/open-nexttrace-*; do
+            artifact="$(basename "$directory")"
+            format="${artifact#open-nexttrace-}"
+            format="${format%%-*}"
+            suffix="${artifact#open-nexttrace-${format}-}"
+            arch="${suffix%-*}"
+            for file in "$directory"/*."$format"; do
+              filename="$(basename "$file")"
+              stem="${filename%.*}"
+              if [[ "$stem" == *"$arch"* ]]; then
+                asset="$filename"
+              else
+                asset="${stem}-${arch}.${format}"
+              fi
+              cp "$file" "release-assets/$asset"
+            done
+          done
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 24
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+      - name: Upload APK and IPK files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag || github.ref_name }}
+        shell: bash
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber

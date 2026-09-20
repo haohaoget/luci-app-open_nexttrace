@@ -10,6 +10,7 @@
 .ont-app input[type=text], .ont-app input[type=number], .ont-app select { height: 36px; min-height: 36px; width: 100%; min-width: 0; margin: 0; border: 1px solid #b9c5d0; border-radius: 4px; padding: 6px 9px; font-size: 13px; box-shadow: none; }
 .ont-app input:focus, .ont-app select:focus { outline: 2px solid #8ac1e5; outline-offset: 1px; }
 .ont-app .ont-target { flex: 1 1 260px; }
+.ont-app .ont-dns, .ont-app .ont-provider { flex: 0 1 145px; min-width: 125px; }
 .ont-app .ont-device { flex: 0 1 260px; min-width: 215px; }
 .ont-actions { display: flex; gap: 8px; }
 .ont-app .ont-actions button { height: 36px; padding: 0 16px; white-space: nowrap; }
