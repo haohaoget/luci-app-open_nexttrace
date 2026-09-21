@@ -64,7 +64,7 @@ make package/open-nexttrace/luci-app-open_nexttrace/compile V=s
 - **Check plugin** 对提交和拉取请求运行前端、Python 与 Lua 测试。
 - **Build OpenWrt packages** 使用 OpenWrt SDK 构建 APK 与 IPK。当前矩阵包括 `x86_64`、`mipsel_24kc`、`aarch64_cortex-a53`、`aarch64_cortex-a72`、`aarch64_cortex-a76`、`aarch64_generic`。构建产物仅包含各架构 `base` 目录中的核心包与 LuCI 包。
 
-发布 Release 或推送 `v*` / `V*` 标签时，构建成功的软件包会上传到对应 Release。要为已有 Release 补充软件包，可手动运行 **Build OpenWrt packages**，并将 `release_tag` 设置为目标标签，例如 `V0.1`。
+发布 Release 时，构建成功的软件包会上传到该 Release。单独推送标签不会触发构建。要为已有 Release 补充软件包，可手动运行 **Build OpenWrt packages**，并将 `release_tag` 设置为目标标签，例如 `V0.1`。
 
 ## 说明
 
