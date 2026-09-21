@@ -10,11 +10,16 @@
 .ont-app input[type=text], .ont-app input[type=number], .ont-app select { height: 36px; min-height: 36px; width: 100%; min-width: 0; margin: 0; border: 1px solid #b9c5d0; border-radius: 4px; padding: 6px 9px; font-size: 13px; box-shadow: none; }
 .ont-app input:focus, .ont-app select:focus { outline: 2px solid #8ac1e5; outline-offset: 1px; }
 .ont-app .ont-target { flex: 1 1 260px; }
+.ont-target-inputs { display: flex; gap: 8px; width: 100%; min-width: 0; }
+.ont-app .ont-target-inputs > input { flex: 1 1 0; }
+.ont-app .ont-target-ip { flex: 0 0 160px; max-width: 42%; }
+.ont-app .ont-target-ip[hidden] { display: none; }
 .ont-app .ont-dns, .ont-app .ont-provider { flex: 0 1 145px; min-width: 125px; }
 .ont-app .ont-device { flex: 0 1 260px; min-width: 215px; }
 .ont-actions { display: flex; gap: 8px; }
 .ont-app .ont-actions button { height: 36px; padding: 0 16px; white-space: nowrap; }
 .ont-app .ont-start { color: #fff; background: var(--ont-accent); border-color: var(--ont-accent); }
+.ont-app .ont-stop-active:not(:disabled) { color: #fff; background: #cf3e3e; border-color: #cf3e3e; }
 .ont-app button { cursor: pointer; }
 .ont-app button:disabled { cursor: default; opacity: .5; }
 .ont-app .ont-settings { border: 1px solid var(--ont-border); border-top: 0; padding: 9px 16px; border-radius: 0 0 7px 7px; }

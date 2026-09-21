@@ -60,12 +60,17 @@ function M.interfaces(dump)
     return result
 end
 
-function M.build(input, interfaces, explicit_traceroute)
-    local target = input.target
+function M.target(target)
     if type(target) ~= "string" or #target == 0 or #target > 253 or
         not target:match("^[%w:][%w.:%-]*$") or target:find("_", 1, true) then
         error("请输入有效的域名、IPv4 或 IPv6 地址（不含 URL、空格或命令参数）", 0)
     end
+    return ipv4(target) or ipv6(target)
+end
+
+function M.build(input, interfaces, explicit_traceroute)
+    local target = input.target
+    M.target(target)
     local protocol = input.protocol or "icmp"
     local family = input.family or "auto"
     local device = input.device or ""

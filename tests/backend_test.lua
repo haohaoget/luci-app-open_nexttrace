@@ -57,6 +57,10 @@ local function fixture()
     }
     local nixio = {
         const = {SIGCHLD = 17}, umask = function(mode) model.umask_mode = mode end,
+        getaddrinfo = function(target, family)
+            model.lookup = {target, family}
+            return model.addresses or {}
+        end,
         open = function(path, mode, permissions)
             model.open_modes[path] = permissions
             if path:match("/stdout$") or path:match("/stderr$") then files[path] = "" end
@@ -141,6 +145,19 @@ do
     local called = false
     local response = b.locked(function() called = true end)
     check(response.error and not called, "mutations serialized by lock")
+end
+do
+    local b, m = fixture()
+    m.addresses = {
+        {family = "inet", address = "110.185.124.145"},
+        {family = "inet", address = "110.185.124.145"},
+        {family = "inet", address = "110.185.124.144"}
+    }
+    local result = b.methods.resolve({target = "example.com", family = "4"})
+    check(m.lookup[1] == "example.com" and m.lookup[2] == "inet", "system DNS follows chosen family")
+    check(#result.addresses == 2 and result.addresses[2] == "110.185.124.144", "system DNS returns distinct addresses")
+    check(b.methods.resolve({target = "1.1.1.1"}).addresses[1] == "1.1.1.1", "literal IP needs no DNS")
+    check(not pcall(b.methods.resolve, {target = "example.com;id"}), "resolver rejects unsafe target")
 end
 for _, modern in ipairs({false, true}) do
     local b, m = fixture()

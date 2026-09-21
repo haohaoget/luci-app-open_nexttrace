@@ -61,6 +61,7 @@ local function parse(data, id, qtype)
         if not offset or offset + 3 > #data then return nil, "DNS 问题段损坏" end
         offset = offset + 4
     end
+    local addresses, seen = {}, {}
     for _ = 1, answers do
         offset = skip_name(data, offset)
         if not offset or offset + 9 > #data then return nil, "DNS 应答段损坏" end
@@ -68,14 +69,19 @@ local function parse(data, id, qtype)
         offset = offset + 10
         if not length or offset + length - 1 > #data then return nil, "DNS 记录长度无效" end
         if class == 1 and rtype == qtype then
+            local address
             if qtype == 1 and length == 4 then
-                return table.concat({data:byte(offset, offset + 3)}, ".")
+                address = table.concat({data:byte(offset, offset + 3)}, ".")
             elseif qtype == 28 and length == 16 then
-                return ipv6(data, offset)
+                address = ipv6(data, offset)
+            end
+            if address and not seen[address] then
+                addresses[#addresses + 1], seen[address] = address, true
             end
         end
         offset = offset + length
     end
+    if #addresses > 0 then return addresses end
     return nil, qtype == 28 and "域名没有 AAAA 记录" or "域名没有 A 记录"
 end
 
@@ -109,16 +115,23 @@ local function query(nixio, target, qtype, server, port, source, timeout)
     return result, message
 end
 
-function M.resolve(nixio, options)
+function M.resolve_all(nixio, options)
     local types = options.family == "6" and {28} or (options.family == "4" and {1} or {1, 28})
-    local last_error
+    local addresses, seen, last_error = {}, {}, nil
     for _, qtype in ipairs(types) do
-        local address, problem = query(nixio, options.target, qtype, options.server,
+        local found, problem = query(nixio, options.target, qtype, options.server,
             options.port or 53, options.source, options.timeout or 5000)
-        if address then return address end
+        for _, address in ipairs(found or {}) do
+            if not seen[address] then addresses[#addresses + 1], seen[address] = address, true end
+        end
         last_error = problem
     end
+    if #addresses > 0 then return addresses end
     error("自定义 DNS 解析失败：" .. (last_error or "没有可用地址"), 0)
+end
+
+function M.resolve(nixio, options)
+    return M.resolve_all(nixio, options)[1]
 end
 
 -- Exposed for deterministic protocol tests; runtime callers use resolve().

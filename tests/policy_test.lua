@@ -46,4 +46,6 @@ for _, option in ipairs({{device = "eth1"}, {device = "not-found"}, {device = "e
     check(not pcall(policy.build, option, interfaces), "reject invalid option")
 end
 check(#policy.interfaces({}) == 0, "empty interfaces")
+check(policy.target("example.com") == false and policy.target("1.1.1.1") == true, "distinguish domain and literal IP")
+check(not pcall(policy.target, "example.com;id"), "resolver rejects unsafe domain")
 print("policy: " .. count .. " assertions passed")

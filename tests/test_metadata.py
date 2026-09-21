@@ -12,7 +12,7 @@ class MetadataTests(unittest.TestCase):
     def test_acl_has_no_generic_shell_or_file_access(self):
         acl = json.loads((APP / "root/usr/share/rpcd/acl.d/luci-app-open_nexttrace.json").read_text())["luci-app-open_nexttrace"]
         self.assertEqual(acl["read"], {"ubus": {"open_nexttrace": ["info", "status"]}, "uci": ["open_nexttrace"]})
-        self.assertEqual(acl["write"], {"ubus": {"open_nexttrace": ["start", "stop"]}, "uci": ["open_nexttrace"]})
+        self.assertEqual(acl["write"], {"ubus": {"open_nexttrace": ["resolve", "start", "stop"]}, "uci": ["open_nexttrace"]})
 
     def test_menu_points_to_real_view(self):
         menu = json.loads((APP / "root/usr/share/luci/menu.d/luci-app-open_nexttrace.json").read_text(encoding="utf-8"))
@@ -119,6 +119,12 @@ class MetadataTests(unittest.TestCase):
         }.items():
             self.assertEqual(hashlib.sha256((vendor / name).read_bytes()).hexdigest(), expected)
         self.assertIn("BSD 2-Clause License", (vendor / "LEAFLET-LICENSE").read_text())
+
+    def test_readme_screenshots_exist(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for name in ("Trace.png", "Setting.png"):
+            self.assertIn(f"Assets/{name}", readme)
+            self.assertTrue((ROOT / "Assets" / name).is_file())
 
 
 if __name__ == "__main__":

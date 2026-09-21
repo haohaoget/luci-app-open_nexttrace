@@ -81,6 +81,74 @@ test('interface DNS follows the WAN selected for this trace', () => {
     ];
     assert.deepEqual(view.resolverOptions(), {server:'223.5.5.5', port:53, source:'10.0.1.2'});
 });
+test('DNS runs only after Start; multiple addresses allow a later IP selection', async () => {
+    const source = fs.readFileSync(path.join(resources, 'view/open_nexttrace/main.js'), 'utf8');
+    const starts = [];
+    let resolves = 0;
+    let answers = ['110.185.124.145', '110.185.124.144'];
+    const E = (tag, attrs, children) => ({tag, attrs, children});
+    const view = new Function('view', 'rpc', 'poll', 'uci', 'trace', 'L', 'E', source)(
+        {extend:x=>x}, {declare:config => (...args) => config.method === 'resolve' ?
+            (resolves++, Promise.resolve({addresses:answers})) : config.method === 'start' ?
+            (starts.push(args), Promise.resolve({status:'running'})) : Promise.resolve({})}, {}, {}, trace, {}, E);
+    view.target = {value:'example.com'};
+    view.family = {value:'4'};
+    view.protocol = {value:'icmp'};
+    view.device = {value:''};
+    view.provider = {value:'NextTrace-API'};
+    view.dnsMode = {value:'system'};
+    view.targetIP = {hidden:true, options:[], value:'', replaceChildren() {this.options=[]; this.value='';},
+        appendChild(option) {this.options.push(option); if (this.options.length === 1) this.value=option.attrs.value;}};
+    view.settings = {max_hops:30, queries:3, timeout:1000, tcp_port:80, udp_port:33494, rdns:true};
+    view.controls = [];
+    view.canWrite = true;
+    view.available = true;
+    view.startButton = {};
+    view.setMessage = () => {};
+    view.setBusy = () => {};
+    view.applyStatus = () => {};
+    view.clearResolution();
+    assert.equal(resolves, 0);
+    assert.equal(view.targetIP.hidden, true);
+    await view.begin();
+    assert.equal(resolves, 1);
+    assert.equal(starts[0][0], answers[0]);
+    assert.equal(view.targetIP.hidden, false);
+    assert.deepEqual(view.targetIP.options.map(x=>x.attrs.value), answers);
+    assert.equal(view.targetIP.value, answers[0]);
+    view.targetIP.value = answers[1];
+    await view.begin();
+    assert.equal(resolves, 1);
+    assert.equal(starts[1][0], answers[1]);
+    assert.equal(view.target.value, 'example.com');
+    view.target.value = 'new.example.com';
+    view.clearResolution();
+    assert.equal(resolves, 1);
+    assert.equal(view.targetIP.hidden, true);
+    assert.equal(view.resolvedAddresses.length, 0);
+    answers = ['192.0.2.1'];
+    await view.begin();
+    assert.equal(resolves, 2);
+    assert.equal(starts[2][0], answers[0]);
+    assert.equal(view.targetIP.hidden, true);
+    assert.deepEqual(view.resolvedAddresses, answers);
+});
+test('stop button is red only while a writable trace is running', () => {
+    const source = fs.readFileSync(path.join(resources, 'view/open_nexttrace/main.js'), 'utf8');
+    const view = new Function('view', 'rpc', 'poll', 'uci', 'trace', 'L', 'E', source)(
+        {extend:x=>x}, {declare:()=>()=>{}}, {}, {}, trace, {}, () => {});
+    view.controls = [];
+    view.available = true;
+    view.canWrite = true;
+    view.startButton = {};
+    view.stopButton = {classList:{toggle(name, active){view.stopActive = active;}}};
+    view.setBusy(true);
+    assert.equal(view.stopActive, true);
+    assert.equal(view.stopButton.disabled, false);
+    view.setBusy(false);
+    assert.equal(view.stopActive, false);
+    assert.equal(view.stopButton.disabled, true);
+});
 test('LuCI rows render remote hostnames and GeoIP fields as text, never HTML', () => {
     const unsafe = [];
     const E = (tag, attrs, children) => {

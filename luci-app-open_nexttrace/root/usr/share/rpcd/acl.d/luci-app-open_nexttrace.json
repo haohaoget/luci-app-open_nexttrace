@@ -6,7 +6,7 @@
       "uci": ["open_nexttrace"]
     },
     "write": {
-      "ubus": { "open_nexttrace": ["start", "stop"] },
+      "ubus": { "open_nexttrace": ["resolve", "start", "stop"] },
       "uci": ["open_nexttrace"]
     }
   }

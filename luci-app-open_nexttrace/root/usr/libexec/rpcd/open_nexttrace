@@ -185,6 +185,34 @@ end
 
 local methods = {}
 
+function methods.resolve(input)
+    local literal = policy.target(input.target)
+    local family = input.family or "auto"
+    if family ~= "auto" and family ~= "4" and family ~= "6" then
+        error("不支持的地址类型", 0)
+    end
+    if literal then return { addresses = {input.target} } end
+    local resolution = policy.resolver(input, interfaces())
+    local addresses
+    if resolution then
+        addresses = resolver.resolve_all(nixio, resolution)
+    else
+        local entries = nixio.getaddrinfo(input.target, family == "4" and "inet" or
+            (family == "6" and "inet6" or "any"))
+        addresses = {}
+        local seen = {}
+        for _, entry in ipairs(entries or {}) do
+            if (entry.family == "inet" or entry.family == "inet6") and
+                type(entry.address) == "string" and not seen[entry.address] then
+                addresses[#addresses + 1] = entry.address
+                seen[entry.address] = true
+            end
+        end
+    end
+    if #addresses == 0 then error("域名没有可用的解析地址", 0) end
+    return { addresses = addresses }
+end
+
 function methods.info()
     return {
         available = fs.access(CORE, "x") == true,
@@ -261,7 +289,7 @@ function methods.start(input, lock)
 end
 
 if arg[1] == "list" then
-    io.write('{"info":{},"status":{"id":""},"stop":{"id":""},"start":{"target":"","protocol":"","family":"","device":"","max_hops":0,"queries":0,"timeout":0,"port":0,"provider":"","rdns":true,"dns_server":"","dns_port":0,"dns_source":""}}')
+    io.write('{"info":{},"status":{"id":""},"resolve":{"target":"","family":"","dns_server":"","dns_port":0,"dns_source":""},"stop":{"id":""},"start":{"target":"","protocol":"","family":"","device":"","max_hops":0,"queries":0,"timeout":0,"port":0,"provider":"","rdns":true,"dns_server":"","dns_port":0,"dns_source":""}}')
 elseif arg[1] == "call" then
     local ok, result = pcall(function()
         local input = json.parse(io.read(8192) or "")

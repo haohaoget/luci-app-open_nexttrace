@@ -12,6 +12,8 @@ var start = rpc.declare({ object: 'open_nexttrace', method: 'start',
         'dns_server', 'dns_port', 'dns_source'],
     expect: { '': {} }, reject: true });
 var stop = rpc.declare({ object: 'open_nexttrace', method: 'stop', params: ['id'], expect: { '': {} }, reject: true });
+var resolve = rpc.declare({ object: 'open_nexttrace', method: 'resolve',
+    params: ['target', 'family', 'dns_server', 'dns_port', 'dns_source'], expect: { '': {} }, reject: true });
 
 // LuCI interprets bare string children as HTML. Always use text nodes for
 // strings, especially PTR names and data returned by GeoIP services.
@@ -64,6 +66,10 @@ return view.extend({
         this.canWrite = !L.hasViewPermission || L.hasViewPermission();
         this.target = el('input', { type: 'text', placeholder: '输入域名或 IP 地址，例如 one.one.one.one', maxlength: 253,
             autocomplete: 'off', spellcheck: 'false', value: recent.target || '' });
+        this.targetIP = select([], '');
+        this.targetIP.className = 'ont-target-ip';
+        this.targetIP.hidden = true;
+        this.targetIP.setAttribute('aria-label', '解析地址');
         this.protocol = select([['icmp', 'ICMP'], ['tcp', 'TCP'], ['udp', 'UDP']], this.settings.protocol);
         this.family = select([['auto', '自动'], ['4', 'IPv4'], ['6', 'IPv6']], this.settings.family);
         this.dnsMode = select([['system', '系统默认'], ['interface', 'WAN 接口 DNS'],
@@ -86,7 +92,7 @@ return view.extend({
             if (event.data.type === 'open-nexttrace-select') self.highlight(event.data.key);
         };
         window.addEventListener('message', this.mapListener);
-        this.controls = [this.target, this.protocol, this.family, this.dnsMode, this.provider, this.device];
+        this.controls = [this.target, this.targetIP, this.protocol, this.family, this.dnsMode, this.provider, this.device];
         this.root = el('div', { 'class': 'ont-app' }, [
             el('link', { rel: 'stylesheet', href: L.resource('open_nexttrace/style.css') }),
             // Some LuCI themes style every semantic <header> as the fixed top
@@ -97,7 +103,8 @@ return view.extend({
                 el('span', { 'class': 'ont-version' }, 'NextTrace ' + (data[0].version || (data[0].available ? '已安装' : '未安装')))
             ]),
             el('section', { 'class': 'ont-toolbar' }, [
-                field('追踪目标', this.target, 'ont-target'), field('协议', this.protocol),
+                field('追踪目标', el('div', { 'class': 'ont-target-inputs' }, [this.target, this.targetIP]), 'ont-target'),
+                field('协议', this.protocol),
                 field('地址类型', this.family), field('DNS 提供方', this.dnsMode, 'ont-dns'),
                 field('IP 解析 API', this.provider, 'ont-provider'), field('WAN 口', this.device, 'ont-device'),
                 el('div', { 'class': 'ont-actions' }, [this.startButton, this.stopButton])
@@ -117,10 +124,15 @@ return view.extend({
             ]), this.logPanel
         ]);
         this.populateInterfaces(this.interfaces, this.settings.device);
+        this.target.addEventListener('input', function() { self.clearResolution(); });
+        [this.family, this.dnsMode, this.device].forEach(function(control) {
+            control.addEventListener('change', function() { self.clearResolution(); });
+        });
         this.target.addEventListener('keydown', function(event) {
             if (event.key === 'Enter' && !self.startButton.disabled) self.begin();
         });
         this.applyStatus(data[1]);
+        this.clearResolution();
         if (!this.available) this.setMessage('未安装核心，请安装 open-nexttrace-core 软件包', true);
         // LuCI starts the global poller immediately when the first callback is
         // registered. At that point render() has not returned yet and root is
@@ -178,6 +190,52 @@ return view.extend({
         return { server: server, port: this.settings.dns_port, source: source };
     },
 
+    isDomain: function(target) {
+        return /^[a-z0-9][a-z0-9.-]*$/i.test(target) && !/^[0-9.]+$/.test(target);
+    },
+
+    clearResolution: function() {
+        this.resolveSerial = (this.resolveSerial || 0) + 1;
+        this.resolveReady = false;
+        this.resolvePromise = null;
+        this.resolvedAddresses = [];
+        this.targetIP.hidden = true;
+        this.targetIP.replaceChildren();
+    },
+
+    resolveTarget: function(serial) {
+        var self = this;
+        if (serial !== this.resolveSerial) return Promise.resolve(false);
+        if (this.resolvePromise) return this.resolvePromise;
+        var dns;
+        try { dns = this.resolverOptions(); }
+        catch (error) { this.setMessage(error.message, true); return Promise.resolve(false); }
+        var target = this.target.value.trim();
+        this.resolvePromise = resolve(target, this.family.value, dns.server, dns.port, dns.source).then(checked).then(function(result) {
+            if (serial !== self.resolveSerial) return false;
+            var seen = {}, addresses = [];
+            (result.addresses || []).forEach(function(address) {
+                if (typeof address === 'string' && !seen[address]) { addresses.push(address); seen[address] = true; }
+            });
+            if (!addresses.length) throw new Error('域名没有可用的解析地址');
+            self.resolvedAddresses = addresses;
+            self.resolveReady = true;
+            self.targetIP.replaceChildren();
+            if (addresses.length > 1) {
+                addresses.forEach(function(address) { self.targetIP.appendChild(el('option', { value: address }, address)); });
+                self.targetIP.hidden = false;
+            }
+            return true;
+        }).catch(function(error) {
+            if (serial === self.resolveSerial) self.setMessage('域名解析失败：' + error.message, true);
+            return false;
+        }).then(function(ok) {
+            if (serial === self.resolveSerial) self.resolvePromise = null;
+            return ok;
+        });
+        return this.resolvePromise;
+    },
+
     setMessage: function(message, error) {
         this.message.textContent = message;
         this.message.className = error ? 'ont-error' : (this.running ? 'ont-running' : '');
@@ -188,16 +246,28 @@ return view.extend({
         this.controls.forEach(function(control) { control.disabled = running || !this.canWrite; }, this);
         this.startButton.disabled = running || !this.available || !this.canWrite;
         this.stopButton.disabled = !running || !this.canWrite;
+        this.stopButton.classList.toggle('ont-stop-active', running && this.canWrite);
     },
 
     begin: function() {
         var self = this;
         if (!this.controls.every(function(control) { return control.reportValidity(); })) return;
-        var options = { target: this.target.value.trim(), protocol: this.protocol.value, family: this.family.value,
+        var typedTarget = this.target.value.trim();
+        if (!typedTarget) { this.target.focus(); this.setMessage('请输入追踪目标', true); return; }
+        if (this.isDomain(typedTarget) && !this.resolveReady) {
+            this.startButton.disabled = true;
+            this.setMessage('正在解析目标地址…');
+            return this.resolveTarget(this.resolveSerial).then(function(ok) {
+                self.startButton.disabled = !self.available || !self.canWrite || self.running;
+                if (ok && self.target.value.trim() === typedTarget && !self.running) return self.begin();
+            });
+        }
+        var options = { target: this.isDomain(typedTarget) && this.resolvedAddresses.length ?
+                (this.targetIP.hidden ? this.resolvedAddresses[0] : this.targetIP.value) : typedTarget,
+            protocol: this.protocol.value, family: this.family.value,
             device: this.device.value, max_hops: this.settings.max_hops, queries: this.settings.queries,
             timeout: this.settings.timeout, port: this.protocol.value === 'udp' ? this.settings.udp_port : this.settings.tcp_port,
             provider: this.provider.value, rdns: this.settings.rdns };
-        if (!options.target) { this.target.focus(); this.setMessage('请输入追踪目标', true); return; }
         var dns;
         try { dns = this.resolverOptions(); } catch (error) { this.setMessage(error.message, true); return; }
         this.setBusy(true);
@@ -206,7 +276,7 @@ return view.extend({
         return start(options.target, options.protocol, options.family, options.device, options.max_hops,
             options.queries, options.timeout, options.port, options.provider, options.rdns,
             dns.server, dns.port, dns.source).then(checked).then(function(result) {
-                try { localStorage.setItem('open-nexttrace-settings', JSON.stringify({ target: options.target })); } catch (e) { /* optional */ }
+                try { localStorage.setItem('open-nexttrace-settings', JSON.stringify({ target: typedTarget })); } catch (e) { /* optional */ }
                 self.starting = false;
                 self.applyStatus(result);
             }).catch(function(error) { self.starting = false; self.setBusy(false); self.setMessage(error.message, true); });
